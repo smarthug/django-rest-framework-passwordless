@@ -2,7 +2,7 @@ import logging
 from django.utils.module_loading import import_string
 from rest_framework import parsers, renderers, status
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated 
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from drfpasswordless.models import CallbackToken
 from drfpasswordless.settings import api_settings
@@ -48,12 +48,14 @@ class AbstractBaseObtainCallbackToken(APIView):
             # Only allow auth types allowed in settings.
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        serializer = self.serializer_class(data=request.data, context={'request': request})
+        serializer = self.serializer_class(
+            data=request.data, context={'request': request})
         if serializer.is_valid(raise_exception=True):
             # Validate -
             user = serializer.validated_data['user']
             # Create and send callback token
-            success = TokenService.send_token(user, self.alias_type, self.token_type, **self.message_payload)
+            success = TokenService.send_token(
+                user, self.alias_type, self.token_type, **self.message_payload)
 
             # Respond With Success Or Failure of Sent
             if success:
@@ -136,21 +138,33 @@ class AbstractBaseObtainAuthToken(APIView):
     """
     serializer_class = None
 
+    def modify_response(self,response, instance):
+        # response_data.set_cookie(
+        #     knox_settings.AUTH_COOKIE_SETTINGS['NAME'],
+        #     token[CONSTANTS.TOKEN_KEY_LENGTH:],
+        #     expires=instance.expiry,
+        #     path=knox_settings.AUTH_COOKIE_SETTINGS['PATH'],
+        #     domain=knox_settings.AUTH_COOKIE_SETTINGS['DOMAIN'],
+        #     secure=knox_settings.AUTH_COOKIE_SETTINGS['SECURE'],
+        #     httponly=knox_settings.AUTH_COOKIE_SETTINGS['HTTP_ONLY'],
+        #     samesite=knox_settings.AUTH_COOKIE_SETTINGS['SAMESITE']
+        # )
+        return response
+
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid(raise_exception=True):
             user = serializer.validated_data['user']
-            token_creator = import_string(api_settings.PASSWORDLESS_AUTH_TOKEN_CREATOR)
-            (token, _) = token_creator(user)
+            token_creator = import_string(
+                api_settings.PASSWORDLESS_AUTH_TOKEN_CREATOR)
+            (instance, token) = token_creator(user)
 
             if token:
-                TokenSerializer = import_string(api_settings.PASSWORDLESS_AUTH_TOKEN_SERIALIZER)
-                token_serializer = TokenSerializer(data=token.__dict__, partial=True)
-                if token_serializer.is_valid():
-                    # Return our key for consumption.
-                    return Response(token_serializer.data, status=status.HTTP_200_OK)
+
+                return self.modify_response(Response(data={'token': token[:8], 'expiry':instance.expiry}, status=status.HTTP_200_OK), instance)
         else:
-            logger.error("Couldn't log in unknown user. Errors on serializer: {}".format(serializer.error_messages))
+            logger.error("Couldn't log in unknown user. Errors on serializer: {}".format(
+                serializer.error_messages))
         return Response({'detail': 'Couldn\'t log you in. Try again later.'}, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -171,10 +185,12 @@ class VerifyAliasFromCallbackToken(APIView):
     serializer_class = CallbackTokenVerificationSerializer
 
     def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data, context={'user_id': self.request.user.id})
+        serializer = self.serializer_class(data=request.data, context={
+                                           'user_id': self.request.user.id})
         if serializer.is_valid(raise_exception=True):
             return Response({'detail': 'Alias verified.'}, status=status.HTTP_200_OK)
         else:
-            logger.error("Couldn't verify unknown user. Errors on serializer: {}".format(serializer.error_messages))
+            logger.error("Couldn't verify unknown user. Errors on serializer: {}".format(
+                serializer.error_messages))
 
         return Response({'detail': 'We couldn\'t verify this alias. Try again later.'}, status.HTTP_400_BAD_REQUEST)
