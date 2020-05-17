@@ -1,5 +1,5 @@
 from django.conf import settings
-from rest_framework.settings import APISettings
+from rest_framework.settings import APISettings, api_settings, import_from_string, perform_import, REMOVED_SETTINGS
 
 USER_SETTINGS = getattr(settings, 'PASSWORDLESS_AUTH', None)
 
@@ -88,6 +88,46 @@ DEFAULTS = {
 IMPORT_STRINGS = (
     'PASSWORDLESS_EMAIL_TOKEN_HTML_TEMPLATE',
     'PASSWORDLESS_CONTEXT_PROCESSORS',
+    'PASSWORDLESS_AUTH_TOKEN_CREATOR',
+    'PASSWORDLESS_AUTH_TOKEN_SERIALIZER',
 )
 
-api_settings = APISettings(USER_SETTINGS, DEFAULTS, IMPORT_STRINGS)
+class passworldless_APISettings(APISettings):
+    def __init__(self, user_settings=None, defaults=None, import_strings=None):
+        self.defaults = defaults or DEFAULTS
+        if user_settings:
+            self._user_settings = self.__check_user_settings(user_settings)
+        self.import_strings = import_strings or IMPORT_STRINGS
+        self._cached_attrs = set()
+
+    def __getattr__(self, attr):
+        if attr not in self.defaults:
+            raise AttributeError("Invalid API setting: '%s'" % attr)
+
+        try:
+            # Check if present in user settings
+            val = self.user_settings[attr]
+        except KeyError:
+            # Fall back to defaults
+            val = self.defaults[attr]
+
+        # Coerce import strings into classes
+        if attr in self.import_strings:
+            val = perform_import(val, attr)
+
+        # Cache the result
+        self._cached_attrs.add(attr)
+        setattr(self, attr, val)
+        return val
+
+    def __check_user_settings(self, user_settings):
+        SETTINGS_DOC = "https://www.django-rest-framework.org/api-guide/settings/"
+        for attr, val in user_settings.items():
+            if isinstance(val, dict):
+                user_settings[attr]=dict(self.defaults.get(attr,{}), **val)
+        for setting in REMOVED_SETTINGS:
+            if setting in user_settings:
+                raise RuntimeError("The '%s' setting has been removed. Please refer to '%s' for available settings." % (setting, SETTINGS_DOC))
+        return user_settings
+
+api_settings = passworldless_APISettings(USER_SETTINGS, DEFAULTS, IMPORT_STRINGS)
