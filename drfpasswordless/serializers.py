@@ -175,7 +175,7 @@ class AbstractBaseCallbackTokenSerializer(serializers.Serializer):
 
     email = serializers.EmailField(required=False)  # Needs to be required=false to require both.
     mobile = serializers.CharField(required=False, validators=[phone_regex], max_length=15)
-    token = TokenField(min_length=6, max_length=6, validators=[token_age_validator])
+    token = TokenField(min_length=6, max_length=6)
 
     def validate_alias(self, attrs):
         email = attrs.get('email', None)
@@ -207,8 +207,7 @@ class CallbackTokenAuthSerializer(AbstractBaseCallbackTokenSerializer):
                                                  'key': callback_token,
                                                  'type': CallbackToken.TOKEN_TYPE_AUTH,
                                                  'is_active': True})
-
-            if token.user == user:
+            if token_age_validator(token):
                 # Check the token type for our uni-auth method.
                 # authenticates and checks the expiry of the callback token.
                 if not user.is_active:
@@ -218,7 +217,6 @@ class CallbackTokenAuthSerializer(AbstractBaseCallbackTokenSerializer):
                 if api_settings.PASSWORDLESS_USER_MARK_EMAIL_VERIFIED \
                         or api_settings.PASSWORDLESS_USER_MARK_MOBILE_VERIFIED:
                     # Mark this alias as verified
-                    user = User.objects.get(pk=token.user.pk)
                     success = verify_user_alias(user, token)
 
                     if success is False:
@@ -226,7 +224,8 @@ class CallbackTokenAuthSerializer(AbstractBaseCallbackTokenSerializer):
                         raise serializers.ValidationError(msg)
 
                 attrs['user'] = user
-                token.delete()
+                token.is_active=False
+                token.save(update_fields=['is_active'])
                 return attrs
 
             else:
