@@ -41,7 +41,7 @@ def create_callback_token_for_user(user, alias_type, token_type):
     alias_type_u = alias_type.upper()
 
     if alias_type_u == 'EMAIL':
-        token , isCreated = CallbackToken.objects.update_or_create(user=user,defaults={"to_alias_type":alias_type_u,
+        token , isCreated = CallbackToken.objects.update_or_create(user=user, defaults={"is_active":True, "to_alias_type":alias_type_u,
                                              "to_alias":getattr(user, api_settings.PASSWORDLESS_USER_EMAIL_FIELD_NAME),
                                              "type":token_type})
 
@@ -57,12 +57,12 @@ def create_callback_token_for_user(user, alias_type, token_type):
     return None
 
 
-def validate_token_age(callback_token):
+def validate_token_age(token):
     """
     Returns True if a given token is within the age expiration limit.
     """
     try:
-        token = CallbackToken.objects.get(key=callback_token, is_active=True)
+        # token = CallbackToken.objects.get(key=callback_token, is_active=True)
         seconds = (timezone.now() - token.created_at).total_seconds()
         token_expiry_time = api_settings.PASSWORDLESS_TOKEN_EXPIRE_TIME
 
