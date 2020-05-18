@@ -1,5 +1,5 @@
 import logging
-from django.utils.module_loading import import_string
+
 from rest_framework import parsers, renderers, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -138,30 +138,28 @@ class AbstractBaseObtainAuthToken(APIView):
     """
     serializer_class = None
 
-    def modify_response(self,response, instance):
-        # response_data.set_cookie(
-        #     knox_settings.AUTH_COOKIE_SETTINGS['NAME'],
-        #     token[CONSTANTS.TOKEN_KEY_LENGTH:],
-        #     expires=instance.expiry,
-        #     path=knox_settings.AUTH_COOKIE_SETTINGS['PATH'],
-        #     domain=knox_settings.AUTH_COOKIE_SETTINGS['DOMAIN'],
-        #     secure=knox_settings.AUTH_COOKIE_SETTINGS['SECURE'],
-        #     httponly=knox_settings.AUTH_COOKIE_SETTINGS['HTTP_ONLY'],
-        #     samesite=knox_settings.AUTH_COOKIE_SETTINGS['SAMESITE']
-        # )
+    def modify_response(self, response, instance):
         return response
+    
+    def auth_token_creator(self, user):
+        creator = api_settings.PASSWORDLESS_AUTH_TOKEN_CREATOR
+        return creator(user)
+
+    def serialize_response_data(self, instance):
+        TokenSerializer = api_settings.PASSWORDLESS_AUTH_TOKEN_SERIALIZER
+        token_serializer = TokenSerializer(data=instance.__dict__, partial=True)
+        return token_serializer
 
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid(raise_exception=True):
             user = serializer.validated_data['user']
-            token_creator = import_string(
-                api_settings.PASSWORDLESS_AUTH_TOKEN_CREATOR)
-            (instance, token) = token_creator(user)
+            instance, is_created = self.auth_token_creator(user)
 
-            if token:
-
-                return self.modify_response(Response(data={'token': token[:8], 'expiry':instance.expiry}, status=status.HTTP_200_OK), instance)
+            if instance:
+                token_serializer = self.serialize_response_data(instance)
+                if token_serializer.is_valid():
+                    return self.modify_response(Response(data=token_serializer.data, status=status.HTTP_200_OK), instance)
         else:
             logger.error("Couldn't log in unknown user. Errors on serializer: {}".format(
                 serializer.error_messages))
